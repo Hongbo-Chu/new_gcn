@@ -1,0 +1,30 @@
+# devide
+device: "cuda:2"
+# path
+reload: True
+# general
+seed: 42
+workers: 5
+resume: '/data_sda/lf/tissuse_project/tissue_segmentation/save/checkpoint_120.tar'
+# train options
+vit_type: 'vit_base_patch16' # vit_base_patch16 / vit_large_patch16 / vit_huge_patch14
+batch_size: 55 # batchsize * accumulation_steps = real batchsize
+accumulation_steps: 7
+image_size: 224
+start_epoch: 0
+epochs: 1000
+dataset: "CIFAR-10" # CIFAR-10 / CIFAR-100 / STL-10 / ImageNet-10 / ImageNet-dogs / tiny-ImageNet
+# model options
+resnet: "ResNet18" # ResNet18 / ResNet34 / ResNet50
+feature_dim: 128
+model_path: "/data_sda/lf/tissuse_project/tissue_segmentation/save"
+reload: False
+
+# loss options
+learning_rate: 0.00002
+weight_decay: 0.1
+instance_temperature: 0.5
+cluster_temperature: 1.0
+
+#distributed
+local_rank: -1
