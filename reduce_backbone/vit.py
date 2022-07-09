@@ -1,6 +1,7 @@
 import timm
 import torch
 import torch.nn as nn
+from timm.models.vision_transformer import Block as encoderblock
 
 """
 use timm.vit_base_patch8_224
@@ -15,16 +16,16 @@ layerNorm
 Identity
 Linear
 """
-
+#TODO 完全从TIMM库中引用，而不知从某个模型引用
 class vit(nn.Module):
-    def __init__(self, block_num, pretrain = None):
+    def __init__(self, block_num, pretrain = None, embed_dim=768):
         """
         params:
         block_num: num of the vit block, ranging from 0-11
         pretrain: the path of the .pth
         """
         super(vit, self).__init__()
-        self.basemodel = timm.create_model( 'vit_base_patch8_224', pretrained=False)
+        self.basemodel = timm.create_model( 'vit_base_patch16_224', pretrained=False)
         self.baselayers = list(self.basemodel.children())
         
         if pretrain is not None:#预训练模型采用无监督自行训练
@@ -32,25 +33,47 @@ class vit(nn.Module):
         
         #开始精简模型
         # self.encoderblocks = [self.baselayers[2] for _ in range(block_num)]
+        self.patch_embed = self.baselayers[0]
+        self.pos_drop = self.baselayers[1]
+        self.block = encoderblock( #TODO drop_path??
+                dim=embed_dim, num_heads=3, mlp_ratio=4, qkv_bias=False, drop=0,
+                attn_drop=0, drop_path=0, norm_layer=nn.LayerNorm, act_layer=nn.GELU)
+        self.layerNorm = self.baselayers[-3]
+        self.num_tokens = 2 
+        self.num_patches = 195#TODO 太难看了！！
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + self.num_tokens, embed_dim))
         
-        self.blocks = [
-            self.baselayers[0], # patch
-            self.baselayers[1], # dropout
-            self.baselayers[2],
-            self.baselayers[-3],
-            # self.baselayers[-2],
-            # self.baselayers[-1]
-            
-        ]
-        self.model = nn.Sequential(*self.blocks)
-    def forward(self, x):
-        return self.model(x)
-
+    def forward(self, x):# TODO distillation token是啥
+        x = self.patch_embed(x)
+        print(f"1:{x.size()}")
+        cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        print(f"2:{x.size()}")
+        # if self.dist_token is None:
+        x = torch.cat((cls_token, x), dim=1)
+        # else:
+        #     x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
+        # print(f"x.size:{x.size()}")
+        # print(f"pos_embed{self.pos_embed.size()}")
+        x = self.pos_drop(x + self.pos_embed)
+        print(f"3:{x.size()}")
+        x = self.block(x)
+        x = self.layerNorm(x)
+        return x[:, 0]
         
 def buildvit():
     return vit(pretrain=None)
 
 
-a = vit(1,pretrain=None)
-b = a(torch.randn(1,3,224,224))
-print(b)
+
+if __name__ =='__main__':
+    a = vit(1,pretrain=None)
+    b = a(torch.randn(1,3,224,224))
+    print(b.size())
+        #网络参数数量
+    def get_parameter_number(net):
+        total_num = sum(p.numel() for p in net.parameters())
+        trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
+        return {'Total': total_num, 'Trainable': trainable_num}
+    kk = get_parameter_number(a)
+    print(list(a.children()))

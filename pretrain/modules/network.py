@@ -8,6 +8,7 @@ def ConvBlocks(input, output, kernel_size=2, stride=1):
         nn.Conv2d(input, output, kernel_size, stride),
         nn.BatchNorm2d(output)
     )
+    
 # class MSResNet(nn.Module):
 #     def __init__(self, input_dim, output_dim):
 #         super(MSResNet, self).__init__()
@@ -106,3 +107,16 @@ class Network(nn.Module):
         h = self.vit(x)
         c = self.instance_projector(h)
         return c
+
+
+#网络参数数量
+def get_parameter_number(net):
+    total_num = sum(p.numel() for p in net.parameters())
+    trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
+    return {'Total': total_num, 'Trainable': trainable_num}
+
+
+aa = vit_base_patch16()
+aa(torch.randn(1,3,224,224))
+kk = get_parameter_number(aa)
+print(kk)
