@@ -16,7 +16,7 @@ layerNorm
 Identity
 Linear
 """
-#TODO 完全从TIMM库中引用，而不知从某个模型引用
+#TODO 完全从TIMM库中引用，而不是从某个模型引用
 class vit(nn.Module):
     def __init__(self, block_num, pretrain = None, embed_dim=768):
         """

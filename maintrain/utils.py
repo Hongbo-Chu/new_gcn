@@ -4,7 +4,7 @@ from sklearn.cluster import SpectralClustering
 from torch import tensor
 import torch
 import time
-
+from collections import Counter
 
 
 class Cluster:
@@ -99,7 +99,7 @@ def split2clusters(node_fea, cluster_num, cluster_method = "K-means"):
         node_idx_list[clu].append(idx)
     return node_fea_list, node_idx_list
 
-def chooseMask(node_fea, cluster_num, mask_rate:list, cluster_method = "K-means"):
+def chooseNodeMask(node_fea, cluster_num, mask_rate:list, cluster_method = "K-means"):
     """
     choose which nodes to mask of a certain cluster
     args:
@@ -133,21 +133,58 @@ def chooseMask(node_fea, cluster_num, mask_rate:list, cluster_method = "K-means"
                 mask_node_idx.extend(sorted_idex[mid_pre:mid_pre + mask_num])
     return mask_node_idx
 
-def mask(node_fea, cluster_nun):
+def chooseEdgeMask():
     """
-    input:node
+    按照策略，选类内，类间和随机三类
+    
     """
-    node_idx = torch.range(0, node_fea.size(0) - 1)
-    clusters = split2clusters()
-    for clu in clusters:
-        chooseMask()
+    pass
 
+def neighber_type(pos, n, pos_dict):
+    """查找周围n圈邻居的标签
 
+    Args:
+        pos (tuple(x, y)): 点的坐标
+        n (int): 几圈邻居
+        pos_dict: 用于存储所有点信息的字典
+    returns:
+        1. 所有值，以及数量，
+        2. 邻居标签的种类
+    """
+    neighbers = []
+    for i in range(pos[0]-n, pos[0]+n+1):
+        for j in range(pos[1]-n, pos[1]+n+1):
+            if (i, j) in pos_dict:
+                neighbers.append(pos_dict[(i,j)][2])
+    return Counter(neighbers), len(list(Counter(neighbers).keys()))
+
+def fea2pos(center_fea, edge_fea, center_pos, edge_pos):
+    """判断特征空间和物理空间的对应点是否对齐
+    """
+    #找中心点对齐点
+    center_map = set(center_fea).intersection(center_pos)
+    #找边缘对齐点
+    edge_map = set(edge_fea).intersection(edge_pos)
+    
 
 if __name__  == '__main__':
     """
     模拟backbone的输入： 600 * 128
     """
     node_fea = torch.randn(3000, 128)
-    a = chooseMask(node_fea=node_fea,cluster_num=6, mask_rate=[0.1, 0.1, 0.1])
+    a = chooseNodeMask(node_fea=node_fea,cluster_num=6, mask_rate=[0.1, 0.1, 0.1])
     print(len(a))
+    
+    import numpy as np
+    from collections import Counter
+    wsi_dict = np.load(save_dict_path, allow_pickle='TRUE')
+    wsi = wsi_dict.item()['43']
+    wsi_pos = [[int(kk.split("_")[3]), int(kk.split("_")[4]), kk] for kk in wsi]
+    wsi_min_x = min([x[0] for x in wsi_pos])
+    wsi_min_y = min([x[1] for x in wsi_pos])
+    wsi_pos = [[(x[0]-wsi_min_x) // 512, (x[1]-wsi_min_y) // 512, x[2], ] for x in wsi_pos]
+    ww = sorted(wsi_pos, key = lambda element: (element[0], element[1]))
+    ww = {(w[0],w[1]): (w[2], idx, int(np.random.randint(0,5))) for idx, w in enumerate(ww)}
+    
+    
+    
