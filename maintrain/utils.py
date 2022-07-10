@@ -167,24 +167,23 @@ def fea2pos(center_fea, edge_fea, center_pos, edge_pos):
     edge_map = set(edge_fea).intersection(edge_pos)
     
 
-if __name__  == '__main__':
-    """
-    模拟backbone的输入： 600 * 128
-    """
-    node_fea = torch.randn(3000, 128)
-    a = chooseNodeMask(node_fea=node_fea,cluster_num=6, mask_rate=[0.1, 0.1, 0.1])
-    print(len(a))
+# if __name__  == '__main__':
+#     """
+#     模拟backbone的输入： 600 * 128
+#     """
+#     node_fea = torch.randn(3000, 128)
+#     a = chooseNodeMask(node_fea=node_fea,cluster_num=6, mask_rate=[0.1, 0.1, 0.1])
+#     print(len(a))
     
-    import numpy as np
-    from collections import Counter
-    wsi_dict = np.load(save_dict_path, allow_pickle='TRUE')
-    wsi = wsi_dict.item()['43']
-    wsi_pos = [[int(kk.split("_")[3]), int(kk.split("_")[4]), kk] for kk in wsi]
-    wsi_min_x = min([x[0] for x in wsi_pos])
-    wsi_min_y = min([x[1] for x in wsi_pos])
-    wsi_pos = [[(x[0]-wsi_min_x) // 512, (x[1]-wsi_min_y) // 512, x[2], ] for x in wsi_pos]
-    ww = sorted(wsi_pos, key = lambda element: (element[0], element[1]))
-    ww = {(w[0],w[1]): (w[2], idx, int(np.random.randint(0,5))) for idx, w in enumerate(ww)}
-    
+#     import numpy as np
+#     from collections import Counter
+#     wsi_dict = np.load(save_dict_path, allow_pickle='TRUE')
+#     wsi = wsi_dict.item()['43']
+#     wsi_pos = [[int(kk.split("_")[3]), int(kk.split("_")[4]), kk] for kk in wsi]
+#     wsi_min_x = min([x[0] for x in wsi_pos])
+#     wsi_min_y = min([x[1] for x in wsi_pos])
+#     wsi_pos = [[(x[0]-wsi_min_x) // 512, (x[1]-wsi_min_y) // 512, x[2], ] for x in wsi_pos]
+#     ww = sorted(wsi_pos, key = lambda element: (element[0], element[1]))
+#     ww = {(w[0],w[1]): (w[2], idx, int(np.random.randint(0,5))) for idx, w in enumerate(ww)}
     
     
