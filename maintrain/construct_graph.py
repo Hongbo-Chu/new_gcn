@@ -101,7 +101,8 @@ def prepoess_file_list(wsi, cluster_num):
     clu_res = Cluster(node_fea=node_fea_tensor, cluster_num = cluster_num).predict()
     for i in range(len(clu_res)):
         ww_dic[i].append(clu_res[i])
-    return ww_dic, node_fea_tensor
+    # print(f"sizeof node_fea{node_fea_tensor.size()}")
+    return ww_dic, node_fea_tensor, clu_res
 
 
 class new_graph:
@@ -111,7 +112,7 @@ class new_graph:
             wsi (_type_): 格式：[name, node_fea]
             cluster_num: 聚类的种类
         """
-        self.wsi_dic, self.node_fea = prepoess_file_list(wsi, clusterr_num)
+        self.wsi_dic, self.node_fea, self.clu_res = prepoess_file_list(wsi, clusterr_num)
         self.node_num = len(self.node_fea)
     def init_edge(self):
         """初始化边，参考javed
@@ -119,17 +120,22 @@ class new_graph:
         u = []
         v = []
         e_fea = []
+        
         for i in tqdm(range(self.node_num)): #TODO 优化建图的速度
             for j in range(i+1, self.node_num):
-                e_fea.append(torch.cat([(self.node_feature[i]-self.node_feature[j])**2, self.wsi_dic[i][], self.pos_feature[j]]))#TODO add p_ij as javed
+                temp = (self.node_fea[i]-self.node_fea[j]) ** 2 #TODO add p_ij as javed
+                e_fea.append(temp.unsqueeze(0))
                 u.append(i)
                 v.append(j)
+        e_fea = torch.cat(e_fea, dim = 0)
         return u, v, e_fea
     def init_graph(self):
         u, v, e_fea = self.init_edge()
         self.graph = dgl.graph((u, v))
-        self.graph.ndata['kk'] = self.node_feature
+        self.graph.ndata['kk'] = self.node_fea
         self.graph.edata['h'] = e_fea
+        print(self.graph)
+        return self.graph, self.node_fea, self.clu_res, self.wsi_dic
     
                 
 if __name__ == '__main__':
@@ -137,8 +143,10 @@ if __name__ == '__main__':
     save_dict_path = 'C:/Users/86136/Desktop/new_gcn/wsi_dict.npy'
     wsi_dict = np.load(save_dict_path, allow_pickle='TRUE')
     wsi = wsi_dict.item()['43']
-    wsi = [(w, torch.randn(1, 128)) for w in wsi ]
-    a, b = prepoess_file_list(wsi, 6)
-    print(a[0])
-    
+    wsi = [[w, torch.randn(1, 128)] for w in wsi ]
+    wsi = wsi
+    # a, b = prepoess_file_list(wsi, 6)
+    # print(a[0])
+    aa = new_graph(wsi, 6)
+    aa.init_graph()
                 

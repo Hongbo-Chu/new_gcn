@@ -130,7 +130,7 @@ class GCN(nn.Module):
         hidden_list = []
         for l in range(self.num_layers):
             h = F.dropout(h, p=self.dropout, training=self.training)
-            h = self.gcn_layers[l](g, h)
+            h, edge_fea = self.gcn_layers[l](g, h)
             if self.norms is not None and l != self.num_layers - 1:
                 h = self.norms[l](h)
             hidden_list.append(h)
@@ -187,8 +187,20 @@ class GraphConv(nn.Module):
 
     def reset_parameters(self):
         self.fc.reset_parameters()
-
+    
     def forward(self, graph, feat):
+        """新添加了mask_edge_idx,用于恢复被mask的边。
+
+        Args:
+            graph (_type_): _description_
+            feat (_type_): _description_
+            mask_edge_idx (_type_): _description_
+
+        Returns:
+            _type_: _description_
+            
+        """
+        print(f"处理前：{graph}")
         with graph.local_scope():
             aggregate_fn = fn.copy_src('h', 'm') # 和copy_u一样，将源节点的特征存储到边上
             # if edge_weight is not None:
@@ -221,14 +233,17 @@ class GraphConv(nn.Module):
             # else:
             # aggregate first then mult W
             graph.srcdata['h'] = feat_src
+            print(f"1:{graph}")
             graph.update_all(aggregate_fn, fn.sum(msg='m', out='h'))
             
-            #edge_pre
-            
-            # graph.apply_edges()
+            print(f"2:{graph}")
+            print(f"before:{graph.edata}")
+            graph.apply_edges(fn.u_add_v('h', 'h', 'm1'))
             rst = graph.dstdata['h']
-            
+            print(f"after:{graph.edata}")
+            print(f"3:{graph}")
             rst = self.fc(rst)
+            # print(f"1rst:{rst.size()}")
             # 更新函数
             # if self._norm in ['right', 'both']:
             degs = graph.in_degrees().float().clamp(min=1)
@@ -236,7 +251,7 @@ class GraphConv(nn.Module):
             shp = norm.shape + (1,) * (feat_dst.dim() - 1)
             norm = torch.reshape(norm, shp)
             rst = rst * norm
-
+            # print(f"2rst:{rst.size()}")
             if self.res_fc is not None:
                 rst = rst + self.res_fc(feat_dst)
 
@@ -245,8 +260,9 @@ class GraphConv(nn.Module):
 
             if self._activation is not None:
                 rst = self._activation(rst)
-
-            return rst
+            # print(f"3rst:{rst.size()}")
+            edge_fea = graph.edata['m']
+            return rst, edge_fea
         
         
         
@@ -309,8 +325,8 @@ if __name__ == '__main__':
             self.graph = dgl.graph((u, v))
             
             # #add nodefeature & eade feature
-            self.graph.ndata['kk'] = self.node_feature
-            self.graph.edata['h'] = self.edge_feature #TODO 初始化边的信息
+            # self.graph.ndata['kk'] = self.node_feature
+            # self.graph.edata['h'] = self.edge_feature
             
 
     node_feature = torch.randn(400, 128).requires_grad_()
@@ -322,14 +338,11 @@ if __name__ == '__main__':
     a = constructGraph(node_feature=node_feature, pos_feature=pos_code, edge_feature=edge_feature)
     a.inital_graph(2)
     g = a.graph
-    print(g)
-
-    print(g.edges())
     
             
     #模拟backbone输入
     import torch
     node_fea = torch.randn(400, 128)
-    a = GCN(in_dim=128, num_hidden=3, out_dim=128, num_layers=3, dropout=0,activation="prelu", residual=True,norm=nn.LayerNorm)
+    a = GCN(in_dim=128, num_hidden=256, out_dim=128, num_layers=3, dropout=0,activation="prelu", residual=True,norm=nn.LayerNorm)
     b = a(g,node_fea)
     print(b.size())

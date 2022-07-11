@@ -2,31 +2,30 @@ import torch
 import sys
 sys.path.append('../maintrain')
 from utils import Cluster
-
+import torch.nn.functional as F
 
 def inner_cluster_loss(node_fea, clu_label, center_fea, mask_nodes, mask_weight):
     """用于计算类内loss
-        对于更新后的node_fea(N, dim)，生成对应的中心向量矩阵。
+        对于更新后的node_fea(N, dim)，分别计算每个node_fea和聚类中心的L2距离
     Args:
         node_fea (tensor): 更新后的node_fea，require_grade=True
         clu_label (_type_): 每个点的聚类标签
-        center_fea (_type_): 几个聚类中心的向量
+        center_fea (_type_): 几个聚类中心的向量,list of tensor的形式
         mask_nodes:加了mask的点
         mask_weight:对于mask点的聚类权重
     """
-    
+    #TODO用矩阵的方式优化
     optim_matrix = []#由各种中心向量组成，是优化的目标
+    L2_dist = 0
     for i in range(len(clu_label)):
-        if i in mask_nodes:
-            optim_matrix.append((1+mask_weight) * center_fea[clu_label[i]])
-        optim_matrix.append(center_fea[clu_label[i]])
-    optim_matrix = torch.cat(optim_matrix, dim = 0)
-    loss = node_fea @ optim_matrix.transpose(1, 0)
-    
-    return loss
+        L2_dist += F.pairwise_distance(node_fea[i], center_fea[clu_label[i]], p=2)
+        if  i in mask_nodes:
+            L2_dist += (1 + mask_weight) * F.pairwise_distance(node_fea[i], center_fea[clu_label[i]], p=2)
+    return L2_dist
 
 def inter_cluster_loss():
-    pass
+    """_summary_
+    """
 
 def loss():
     pass
