@@ -2,10 +2,9 @@ from errno import EFAULT
 from os import rename
 import numpy as np
 import torch
-import networkx as nx
 from tqdm import tqdm
 import dgl
-from utils import Cluster
+from maintrain.utils.utils import Cluster
 """
 从backbone来的数据：
 1. nodefeature:
@@ -19,80 +18,25 @@ from utils import Cluster
 2. adjacent matric
 
 """
-    
-class constructGraph:
-    def __init__(self, node_feature, pos_feature:list):
-        """
-        node_feature.size() = [num_nodes, feature_dim]
-        pos_feature.size() = [num_nodes, 2]
-        
-        """
-        if isinstance(node_feature, list):
-            self.node_feature = torch.tensor(node_feature)
-        
-        self.node_feature = node_feature
-        self.pos_feature = pos_feature
-        self.node_num = len(self.pos_feature)
-        self.node_name = [i for i in range(self.node_num)] #一个position对应一个name
-        self.edge_index = []
-        # self.edge_feature = edge_feature
-        
-        
-    def pos_encoding(self, pos:list):
-        pass 
-    def inital_edge_feature(self):
-        self.u, self.v = self.graph.edges()[0], self.graph.edges()[1]
-        edge_feature_list = []
-        for i in range(len(self.u)):
-            node_fea_u = self.node_feature[self.u[i]]
-            node_fea_v = self.node_feature[self.v[i]]
-            edge_feature = abs(node_fea_u - node_fea_v)
-            edge_feature_list.append(edge_feature.detach().numpy().tolist())
-
-        edge_feature_teosr = torch.tensor(edge_feature_list)
-        print(f"edge_feature.size(){edge_feature_teosr.size()}")
-        self.graph.edata['h'] = edge_feature_teosr
-        return self.graph
-            
-    def inital_graph(self, threshold):
-        #inital_edge_index
-        print("computing graphs")
-        for i in tqdm(range(self.node_num)): #TODO 优化建图的速度
-            for j in range(i+1, self.node_num):
-                edge = torch.cat([(self.node_feature[i]-self.node_feature[j])**2, self.pos_feature[i], self.pos_feature[j]])#TODO add p_ij as javed
-        
-        self.edge_index = torch.tensor(self.edge_index)
-        
-        #construct graph
-        u = self.edge_index.permute(1, 0)[0]
-        v = self.edge_index.permute(1, 0)[1]
-        self.graph = dgl.graph((u, v))
-        
-        # #add nodefeature & eade feature
-        self.graph.ndata['kk'] = self.node_feature
-        # self.graph.edata['h'] = self.edge_feature #TODO 初始化边的信息
-        return self.graph
-
-
 def prepoess_file_list(wsi, cluster_num):
     """根据输入的文件名列表构件数据字典,并为每一个文件创建一个唯一idx
 
     Args:
         wsi (_type_): 格式：[name, node_fea]
     returns:
-        {idx: (name, (x, y), ndoe_fea, label)}
+        {idx: (name, (x, y), ndoe_fea, (x_true, y_true), label)}
         node_fea:[N, dim]
     """
     
     wsi_pos = [[int(kk[0].split("_")[3]), int(kk[0].split("_")[4]), kk[0], kk[1]] for kk in wsi]
     wsi_min_x = min([x[0] for x in wsi_pos])
     wsi_min_y = min([x[1] for x in wsi_pos])
-    wsi_pos = [[(x[0]-wsi_min_x) // 512, (x[1]-wsi_min_y) // 512, x[2], x[3] ] for x in wsi_pos]
+    wsi_pos = [[(x[0]-wsi_min_x) // 512, (x[1]-wsi_min_y) // 512, x[2], x[3], (x[0], x[1]) ] for x in wsi_pos]
     ww = sorted(wsi_pos, key = lambda element: (element[0], element[1]))
     ww_dic = {}
     tensor_list = []
     for idx, w in enumerate(ww):
-        ww_dic[idx] = [w[2], (w[0], w[1]), w[3]]
+        ww_dic[idx] = [w[2], (w[0], w[1]), w[3], w[4]]
         tensor_list.append(w[3])
     #将node-fea按照处理后的顺序变成tensor方便之后使用
     node_fea_tensor = torch.cat(tensor_list, dim = 0)
@@ -120,10 +64,15 @@ class new_graph:
         u = []
         v = []
         e_fea = []
-        
+        #仿照javed公式写(r,c,h,w)分别代表了 左上角的坐标和图像的高和宽
+        h = w = 128
         for i in tqdm(range(self.node_num)): #TODO 优化建图的速度
+            r_i, c_i = self.wsi_dic[i][3]
             for j in range(i+1, self.node_num):
-                temp = (self.node_fea[i]-self.node_fea[j]) ** 2 #TODO add p_ij as javed
+                r_j, c_j = self.wsi_dic[j][3]
+                p_i_j = torch.tensor([2 * (r_i - r_j) / (2*h), 2 * (c_i - c_j) / (2*h), 0, 0])
+                temp = torch.tensor((self.node_fea[i]-self.node_fea[j]) ** 2)
+                temp = torch.cat([temp, p_i_j], dim = 0)
                 e_fea.append(temp.unsqueeze(0))
                 u.append(i)
                 v.append(j)
@@ -132,10 +81,10 @@ class new_graph:
     def init_graph(self):
         u, v, e_fea = self.init_edge()
         self.graph = dgl.graph((u, v))
-        self.graph.ndata['kk'] = self.node_fea
-        self.graph.edata['h'] = e_fea
-        print(self.graph)
-        return self.graph, self.node_fea, self.clu_res, self.wsi_dic
+        # self.graph.ndata['kk'] = self.node_fea
+        # self.graph.edata['h'] = e_fea
+        # print(self.graph)
+        return self.graph, self.node_fea, self.clu_res, self.wsi_dic, (u, v), e_fea
     
                 
 if __name__ == '__main__':

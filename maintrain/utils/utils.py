@@ -6,7 +6,7 @@ import torch
 import time
 from collections import Counter
 import torch.nn.functional as F
-
+import random
 
 class Cluster:
     """
@@ -115,9 +115,11 @@ def chooseNodeMask(node_fea, cluster_num, mask_rate:list, cluster_method = "K-me
     high = [] # 用于存储高相似度
     low = [] #用于存储低相似度
     node_fea_list, node_idx_list = split2clusters(node_fea, cluster_num, cluster_method)
-    
+    sort_idx_rst = [[] for i in range(cluster_num)]#用于存放每一类按照相似度从大到小的排序结果，后面edgemask的时候要用。
+    #取mask前先要判断是否重合
+    pys_center, pys_edge = compute_pys_feature(wsi=wsi, n = 1)#计算处于物理中心和边缘的点
     #对每一类点分别取mask
-    for feats, idxs in zip(node_fea_list, node_idx_list):
+    for idx, (feats, idxs) in enumerate(zip(node_fea_list, node_idx_list)):
         #feats的格式是[tensor,tessor....],先要拼成一个tensor
         feats = torch.cat(feats, dim = 0)
         # print(f"feat{feats.size()}")
@@ -126,31 +128,43 @@ def chooseNodeMask(node_fea, cluster_num, mask_rate:list, cluster_method = "K-me
         # print(f"center:{cluster_center.size()}")
         dist = euclidean_dist(feats, cluster_center.unsqueeze(0))
         sorted_disrt, sorted_idex = samesort(dist, idxs)
+        sort_idx_rst[idx].extend(sorted_idex)
         #对于index取不同位置的点进行mask
         for i, rate in enumerate(mask_rate):
             mask_num = int(len(sorted_idex) * rate)
             if i == 0:#高相似度
-                mask_node_idx.extend(sorted_idex[:mask_num])
+                #先判断是否重合
+                nodes_tobe_mask = sorted_idex[:mask_num]
+                #通过差集求取
+                mask_nodes_set = set(nodes_tobe_mask) - set(pys_center)
+                mask_node_idx.extend(mask_nodes_set)
                 high.extend(sorted_idex[:mask_num])
             elif i == 2:#地相似度
-                mask_node_idx.extend(sorted_idex[-mask_num:])
+                #先判断是否重合
+                nodes_tobe_mask = sorted_idex[-mask_num:]
+                #通过差集求取
+                mask_nodes_set = set(nodes_tobe_mask) - set(pys_edge)
+                mask_node_idx.extend(mask_nodes_set)
                 low.extend(sorted_idex[-mask_num:])
             else: # 中相似度
                 mid = len(sorted_idex) // 2
                 mid_pre = mid - (mask_num) // 2
                 mask_node_idx.extend(sorted_idex[mid_pre:mid_pre + mask_num])
-    return mask_node_idx, high, low
+    return mask_node_idx, high, low, sort_idx_rst
 
-def chooseEdgeMask(u, v, clus_label, inner_rate, inter_rate, random_rate):
+def chooseEdgeMask(u_v_pair, clus_label, sort_idx_rst, rates:dict):
     """
     按照策略，选类内，类间和随机三类
     args：
         源节点和目标节点。
+        sort_idx_rst:每一类中的indx按照相似度从小到大的顺序排序，format:[[],[],....]
+        rates:各种mask的比例共四类，类间，类内半径，类内中心，类内随机。用字典的形式传入。
     return:
         源节点-目标节点，节点对
     """
+    u, v = u_v_pair
     diff = []
-    same = [[] for _ in range(set(clus_label))]
+    same = [[] for _ in range(len(set(clus_label)))]
     # same = []
     mask_edge_pair = [] # 最终要被masked边 = 类内 + 类间
     #先调出目标和源同属一类的
@@ -158,18 +172,21 @@ def chooseEdgeMask(u, v, clus_label, inner_rate, inter_rate, random_rate):
         if u[i] != v[i]:
             diff.append([u, v])
         else:
-            same[i].append([u, v])
-    # 类间：先简单挑前n个
-    mask_edge_pair.extend(diff[:len(diff) * inter_rate])
-    #TODO类内：要挑半径,目前先随机，太麻烦了
-    #TODO 三类
-    mask_edge_pair.extend(same[:len(same) * inner_rate])
-    #半径
+            same[clus_label[i]].append([u, v])
+    
+    #将找到的边
+    
+    # 类间
+    random.shuffle(diff)
+    mask_edge_pair.extend(diff[:int(len(diff) * rates['inter'])])
+    #类内半径
+    
     
     #中心
     #随机
     #TODO 添加随机
     #TODO找孤点
+    return mask_edge_pair
 def neighber_type(pos, n, pos_dict):
     """查找周围n圈邻居的标签
 
@@ -192,7 +209,7 @@ def compute_pys_feature(wsi, n):
     """寻找物理特征上中心和边缘的点
 
     Args:
-        wsi (_type_): 建图时候使用的wsi结构体， {idx: (name, (x, y), ndoe_fea, label)}
+        wsi (_type_): 建图时候使用的wsi结构体， {idx: (name, (x, y), ndoe_fea, (x_true, y_true), label)}
         n:查找周围n全邻居
     """
     center_nodes = []

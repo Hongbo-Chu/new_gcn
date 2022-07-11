@@ -125,12 +125,13 @@ class GCN(nn.Module):
         self.norms = None
         self.head = nn.Identity()
 
-    def forward(self, g, inputs, return_hidden=False):
-        h = inputs
+    def forward(self, g, node_fea, edge_fea, return_hidden=False):
+        h = node_fea
+        k = edge_fea
         hidden_list = []
         for l in range(self.num_layers):
             h = F.dropout(h, p=self.dropout, training=self.training)
-            h, edge_fea = self.gcn_layers[l](g, h)
+            h, k = self.gcn_layers[l](g, h, k)
             if self.norms is not None and l != self.num_layers - 1:
                 h = self.norms[l](h)
             hidden_list.append(h)
@@ -188,7 +189,7 @@ class GraphConv(nn.Module):
     def reset_parameters(self):
         self.fc.reset_parameters()
     
-    def forward(self, graph, feat):
+    def forward(self, graph, node_fea, edge_fea):
         """新添加了mask_edge_idx,用于恢复被mask的边。
 
         Args:
@@ -200,7 +201,7 @@ class GraphConv(nn.Module):
             _type_: _description_
             
         """
-        print(f"处理前：{graph}")
+        # print(f"处理前：{graph}")
         with graph.local_scope():
             aggregate_fn = fn.copy_src('h', 'm') # 和copy_u一样，将源节点的特征存储到边上
             # if edge_weight is not None:
@@ -210,7 +211,7 @@ class GraphConv(nn.Module):
             #如果有边的特征的话就用源节点乘边的权重，然后把得到的值作为消息，存储在边上  
 
             # (BarclayII) For RGCN on heterogeneous graphs we need to support GCN on bipartite.
-            feat_src, feat_dst = expand_as_pair(feat, graph)#用于支持二分图
+            feat_src, feat_dst = expand_as_pair(node_fea, graph)#用于支持二分图
             # if self._norm in ['left', 'both']:
             degs = graph.out_degrees().float().clamp(min=1)#计算节点的出度矩阵
             norm = torch.pow(degs, -0.5) #计算C_ij,归一化用
@@ -233,15 +234,12 @@ class GraphConv(nn.Module):
             # else:
             # aggregate first then mult W
             graph.srcdata['h'] = feat_src
-            print(f"1:{graph}")
             graph.update_all(aggregate_fn, fn.sum(msg='m', out='h'))
             
-            print(f"2:{graph}")
-            print(f"before:{graph.edata}")
             graph.apply_edges(fn.u_add_v('h', 'h', 'm1'))
             rst = graph.dstdata['h']
-            print(f"after:{graph.edata}")
-            print(f"3:{graph}")
+            # print(f"after:{graph.edata}")
+            # print(f"3:{graph}")
             rst = self.fc(rst)
             # print(f"1rst:{rst.size()}")
             # 更新函数
@@ -261,7 +259,7 @@ class GraphConv(nn.Module):
             if self._activation is not None:
                 rst = self._activation(rst)
             # print(f"3rst:{rst.size()}")
-            edge_fea = graph.edata['m']
+            edge_fea = graph.edata['m1']
             return rst, edge_fea
         
         

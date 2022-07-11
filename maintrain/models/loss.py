@@ -1,7 +1,7 @@
 import torch
 import sys
 sys.path.append('../maintrain')
-from utils import Cluster
+from maintrain.utils.utils import Cluster
 import torch.nn.functional as F
 
 def inner_cluster_loss(node_fea, clu_label, center_fea, mask_nodes, mask_weight):
@@ -15,7 +15,6 @@ def inner_cluster_loss(node_fea, clu_label, center_fea, mask_nodes, mask_weight)
         mask_weight:对于mask点的聚类权重
     """
     #TODO用矩阵的方式优化
-    optim_matrix = []#由各种中心向量组成，是优化的目标
     L2_dist = 0
     for i in range(len(clu_label)):
         L2_dist += F.pairwise_distance(node_fea[i], center_fea[clu_label[i]], p=2)
@@ -23,9 +22,18 @@ def inner_cluster_loss(node_fea, clu_label, center_fea, mask_nodes, mask_weight)
             L2_dist += (1 + mask_weight) * F.pairwise_distance(node_fea[i], center_fea[clu_label[i]], p=2)
     return L2_dist
 
-def inter_cluster_loss():
-    """_summary_
+def inter_cluster_loss(node_fea, clu_label, center_fea, mask_nodes, mask_weight):
+    """类间loss，先找到每一类的聚类边界，然后最大化边界之间的距离
+
+    Args:
+        node_fea (_type_): _description_
+        clu_label (_type_): _description_
+        center_fea (_type_): _description_
+        mask_nodes (_type_): _description_
+        mask_weight (_type_): _description_
     """
+    #首先找到每一类的聚类半径
+    #算出每一类的
 
 def loss():
     pass

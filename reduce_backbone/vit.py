@@ -61,7 +61,7 @@ class vit(nn.Module):
         return x[:, 0]
         
 def buildvit():
-    return vit(pretrain=None)
+    return vit(1, pretrain=None)
 
 
 
