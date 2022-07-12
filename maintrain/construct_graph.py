@@ -1,3 +1,4 @@
+from ast import arg
 from errno import EFAULT
 from os import rename
 import numpy as np
@@ -18,7 +19,7 @@ from maintrain.utils.utils import Cluster
 2. adjacent matric
 
 """
-def prepoess_file_list(wsi, cluster_num):
+def prepoess_file_list(wsi, cluster_num, args):
     """根据输入的文件名列表构件数据字典,并为每一个文件创建一个唯一idx
 
     Args:
@@ -44,7 +45,8 @@ def prepoess_file_list(wsi, cluster_num):
     node_fea_tensor = torch.cat(tensor_list, dim = 0)
     # print(f"shape of node_fea{node_fea_tensor.size()}")
     #生成聚类标签
-    clu_res = Cluster(node_fea=node_fea_tensor, cluster_num = cluster_num).predict()
+    print(args)
+    clu_res = Cluster(node_fea=node_fea_tensor, cluster_num = cluster_num, device=args.device).predict()
     for i in range(len(clu_res)):
         ww_dic[i].append(clu_res[i])
     # print(f"sizeof node_fea{node_fea_tensor.size()}")
@@ -52,13 +54,15 @@ def prepoess_file_list(wsi, cluster_num):
 
 
 class new_graph:
-    def __init__(self, wsi, clusterr_num) -> None:
+    def __init__(self, wsi, clusterr_num, args) -> None:
         """根据node_fea和读取的文件名建图
          Args:
             wsi (_type_): 格式：[name, node_fea]
             cluster_num: 聚类的种类
+            
         """
-        self.wsi_dic, self.node_fea, self.clu_res = prepoess_file_list(wsi, clusterr_num)
+        self.device = args.device
+        self.wsi_dic, self.node_fea, self.clu_res = prepoess_file_list(wsi, clusterr_num, args)
         self.node_num = len(self.node_fea)
     def init_edge(self):
         """初始化边，参考javed
@@ -72,9 +76,9 @@ class new_graph:
             r_i, c_i = self.wsi_dic[i][3]
             for j in range(i+1, self.node_num):
                 r_j, c_j = self.wsi_dic[j][3]
-                p_i_j = torch.tensor([2 * (r_i - r_j) / (2*h), 2 * (c_i - c_j) / (2*h), 0, 0])
-                temp = torch.tensor((self.node_fea[i]-self.node_fea[j]) ** 2)
-                temp = torch.cat([temp, p_i_j], dim = 0)
+                p_i_j = torch.tensor([2 * (r_i - r_j) / (2*h), 2 * (c_i - c_j) / (2*h), 0, 0]).to(self.device)
+                temp = torch.tensor((self.node_fea[i]-self.node_fea[j]) ** 2).to(self.device)
+                temp = torch.cat([temp, p_i_j], dim = 0).to(self.device)
                 e_fea.append(temp.unsqueeze(0))
                 u.append(i)
                 v.append(j)

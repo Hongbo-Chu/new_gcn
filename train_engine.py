@@ -37,12 +37,13 @@ def train_one_epoch(backbone: torch.nn.Module, gcn: torch.nn.Module,
     
     wsi = [[w, node_fea_detach[i]] for i, w in enumerate(wsi) ]
     #建图
-    g, node_fea, clu_label, wsi_dic_new, u_v_pair, edge_fea = new_graph(wsi, args.cluster_num).init_graph()
+    g, node_fea, clu_label, wsi_dic_new, u_v_pair, edge_fea = new_graph(wsi, args.cluster_num, args).init_graph()
+    g = g.to(args.device)
     #下面该挑mask了
     no_mask_lsit = []#用于存储不要mask的列表
     mask_rates = [args.mask_rate_high, args.mask_rate_mid, args.mask_rate_low]#各个被mask的比例
     for i in range(args.mask_num):
-        mask_idx, fea_center, fea_edge, sort_idx_rst, cluster_center_fea = chooseNodeMask(node_fea, args.cluster_num, mask_rates, wsi_dic_new)#TODO 检查数量
+        mask_idx, fea_center, fea_edge, sort_idx_rst, cluster_center_fea = chooseNodeMask(node_fea, args.cluster_num, mask_rates, wsi_dic_new, args.device)#TODO 检查数量
         mask_edge_idx = chooseEdgeMask(u_v_pair, clu_label,[], {"inter":0.1} )
         print(f"mask nodes{mask_idx}")
         #添加mask
@@ -64,6 +65,5 @@ def train_one_epoch(backbone: torch.nn.Module, gcn: torch.nn.Module,
 
     
     
-    
-    #TODO 不mask列表
     #TODO loader
+    #TODO 连GCn的时候将backbone的梯度先冻上

@@ -214,9 +214,12 @@ class GraphConv(nn.Module):
             feat_src, feat_dst = expand_as_pair(node_fea, graph)#用于支持二分图
             # if self._norm in ['left', 'both']:
             degs = graph.out_degrees().float().clamp(min=1)#计算节点的出度矩阵
-            norm = torch.pow(degs, -0.5) #计算C_ij,归一化用
+            norm = torch.pow(degs, -0.5).cuda() #计算C_ij,归一化用#TODO为啥还要cuda啊？？？？
+            print(norm.device)
+            print(degs.device)
             shp = norm.shape + (1,) * (feat_src.dim() - 1)#resahpe
             norm = torch.reshape(norm, shp)
+            print(f"norm:{norm.device}, fea{feat_src.device}")
             feat_src = feat_src * norm
 
             
