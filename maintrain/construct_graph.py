@@ -29,15 +29,17 @@ def prepoess_file_list(wsi, cluster_num):
     """
     
     wsi_pos = [[int(kk[0].split("_")[3]), int(kk[0].split("_")[4]), kk[0], kk[1]] for kk in wsi]
+    #wsi_pos格式1：[(x_true, y_true), name, node_fea]
     wsi_min_x = min([x[0] for x in wsi_pos])
     wsi_min_y = min([x[1] for x in wsi_pos])
     wsi_pos = [[(x[0]-wsi_min_x) // 512, (x[1]-wsi_min_y) // 512, x[2], x[3], (x[0], x[1]) ] for x in wsi_pos]
+    #wsi_pos格式2：[(x, y), name, node_fea，(x_true, y_true)]
     ww = sorted(wsi_pos, key = lambda element: (element[0], element[1]))
     ww_dic = {}
     tensor_list = []
     for idx, w in enumerate(ww):
         ww_dic[idx] = [w[2], (w[0], w[1]), w[3], w[4]]
-        tensor_list.append(w[3])
+        tensor_list.append(w[3].unsqueeze(0))
     #将node-fea按照处理后的顺序变成tensor方便之后使用
     node_fea_tensor = torch.cat(tensor_list, dim = 0)
     # print(f"shape of node_fea{node_fea_tensor.size()}")
@@ -83,7 +85,7 @@ class new_graph:
         self.graph = dgl.graph((u, v))
         # self.graph.ndata['kk'] = self.node_fea
         # self.graph.edata['h'] = e_fea
-        # print(self.graph)
+        
         return self.graph, self.node_fea, self.clu_res, self.wsi_dic, (u, v), e_fea
     
                 

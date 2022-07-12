@@ -100,22 +100,25 @@ def split2clusters(node_fea, cluster_num, cluster_method = "K-means"):
         node_idx_list[clu].append(idx)
     return node_fea_list, node_idx_list
 
-def chooseNodeMask(node_fea, cluster_num, mask_rate:list, cluster_method = "K-means"):
+def chooseNodeMask(node_fea, cluster_num, mask_rate:list, wsi, cluster_method = "K-means"):
     """
     choose which nodes to mask of a certain cluster
     args:
         maskrate: list,用于存放三种相似度的mask比例。[高，中，低]
+        wsi:建图的时候返回的结构体，用于在加mask前判断是否重合
     return: 
         被masknode的idx，list of nodes
         与聚类中心高相似度的点
         与聚类中心低相似度的点
+        cluster_center_list:所有类的聚类中心
+        clus_list:每一类节点的聚类的排序结果，list of list形式
     """
-    #TODO 判断mask是否该加 是否在加之前就重合了
     mask_node_idx = [] # 用于存储最终mask点的idx
     high = [] # 用于存储高相似度
     low = [] #用于存储低相似度
     node_fea_list, node_idx_list = split2clusters(node_fea, cluster_num, cluster_method)
     sort_idx_rst = [[] for i in range(cluster_num)]#用于存放每一类按照相似度从大到小的排序结果，后面edgemask的时候要用。
+    cluster_center_list = []
     #取mask前先要判断是否重合
     pys_center, pys_edge = compute_pys_feature(wsi=wsi, n = 1)#计算处于物理中心和边缘的点
     #对每一类点分别取mask
@@ -124,12 +127,15 @@ def chooseNodeMask(node_fea, cluster_num, mask_rate:list, cluster_method = "K-me
         feats = torch.cat(feats, dim = 0)
         # print(f"feat{feats.size()}")
         cluster_center = feats.mean(dim=0)
+        cluster_center_list.append(cluster_center)
         #计算任一点和中心的欧氏距离
         # print(f"center:{cluster_center.size()}")
         dist = euclidean_dist(feats, cluster_center.unsqueeze(0))
         sorted_disrt, sorted_idex = samesort(dist, idxs)
         sort_idx_rst[idx].extend(sorted_idex)
+        #计算聚类半径，由聚类中心减去和他相似度最低的元素
         #对于index取不同位置的点进行mask
+        
         for i, rate in enumerate(mask_rate):
             mask_num = int(len(sorted_idex) * rate)
             if i == 0:#高相似度
@@ -150,7 +156,7 @@ def chooseNodeMask(node_fea, cluster_num, mask_rate:list, cluster_method = "K-me
                 mid = len(sorted_idex) // 2
                 mid_pre = mid - (mask_num) // 2
                 mask_node_idx.extend(sorted_idex[mid_pre:mid_pre + mask_num])
-    return mask_node_idx, high, low, sort_idx_rst
+    return mask_node_idx, high, low, sort_idx_rst, cluster_center_list
 
 def chooseEdgeMask(u_v_pair, clus_label, sort_idx_rst, rates:dict):
     """
@@ -160,9 +166,10 @@ def chooseEdgeMask(u_v_pair, clus_label, sort_idx_rst, rates:dict):
         sort_idx_rst:每一类中的indx按照相似度从小到大的顺序排序，format:[[],[],....]
         rates:各种mask的比例共四类，类间，类内半径，类内中心，类内随机。用字典的形式传入。
     return:
-        源节点-目标节点，节点对
+        源节点-目标节点对在所有边中的位置，list形式
     """
-    u, v = u_v_pair
+    u, v = u_v_pair #u,v分别为两个长列表
+    pairs = [(u[i], v[i]) for i in range(len(u))]#将u,v变成list of pair的形式，方便后面查找
     diff = []
     same = [[] for _ in range(len(set(clus_label)))]
     # same = []
@@ -170,11 +177,9 @@ def chooseEdgeMask(u_v_pair, clus_label, sort_idx_rst, rates:dict):
     #先调出目标和源同属一类的
     for i in range(len(u)):
         if u[i] != v[i]:
-            diff.append([u, v])
+            diff.append((u[i], v[i]))
         else:
-            same[clus_label[i]].append([u, v])
-    
-    #将找到的边
+            same[clus_label[i]].append((u[i], v[i]))
     
     # 类间
     random.shuffle(diff)
@@ -185,8 +190,16 @@ def chooseEdgeMask(u_v_pair, clus_label, sort_idx_rst, rates:dict):
     #中心
     #随机
     #TODO 添加随机
-    #TODO找孤点
-    return mask_edge_pair
+    
+    #最后要将edge_pair的数据转化为edge_idx
+    edge_idx = []
+    for i, pair in enumerate(mask_edge_pair):
+        try:
+            idx = pairs.index(pair)
+            edge_idx.append(idx)
+        except:
+            print("choose edge mask error")
+    return edge_idx
 def neighber_type(pos, n, pos_dict):
     """查找周围n圈邻居的标签
 
@@ -284,36 +297,3 @@ def fea2pos(center_fea, edge_fea, center_pos, edge_pos):
     
 #     return loss
 
-
-def inner_cluster_loss(node_fea, clu_label, center_fea, mask_nodes, mask_weight):
-    """用于计算类内loss
-        对于更新后的node_fea(N, dim)，生成对应的中心向量矩阵。
-    Args:
-        node_fea (tensor): 更新后的node_fea，require_grade=True
-        clu_label (_type_): 每个点的聚类标签
-        center_fea (_type_): 几个聚类中心的向量,list of tensor的形式
-        mask_nodes:加了mask的点
-        mask_weight:对于mask点的聚类权重
-    """
-    
-    optim_matrix = []#由各种中心向量组成，是优化的目标
-    L2_dist = 0
-    for i in range(len(clu_label)):
-        L2_dist += F.pairwise_distance(node_fea[i], center_fea[clu_label[i]], p=2)
-        # if  i in mask_nodes:
-        #     L2_dist += (1 + mask_weight) * F.pairwise_distance(node_fea[i], center_fea[clu_label[i]], p=2)
-    return L2_dist
-
-
-def inter_cluster_loss():
-    """_summary_
-    """
-
-def loss():
-    pass
-
-if __name__ == '__main__':
-    node_fea = torch.randn(3000, 128)
-    clu_label = Cluster(node_fea, 6).predict()
-    center_fea = [torch.randn(1,128) for i in range(6)]
-    loss = inner_cluster_loss(node_fea, clu_label, center_fea,1,1)
